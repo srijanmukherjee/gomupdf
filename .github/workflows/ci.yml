@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  # Pinned MuPDF release, built from source for reproducible static cgo linking.
+  MUPDF_VERSION: "1.24.10"
+  # Installed under $HOME so the cache needs no elevated permissions.
+  MUPDF_PREFIX: /home/runner/mupdf
+
 jobs:
   test:
     name: build · vet · test · coverage
@@ -14,17 +20,38 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install MuPDF (libmupdf + headers)
+      - name: Cache MuPDF build
+        id: mupdf-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.MUPDF_PREFIX }}
+          key: mupdf-${{ runner.os }}-${{ env.MUPDF_VERSION }}
+
+      - name: Build & install MuPDF (cache miss)
+        if: steps.mupdf-cache.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update
-          # libmupdf-dev provides the headers and static libs (libmupdf,
-          # libmupdf-third) that the cgo flags in mupdf.go link against. The
-          # extra -dev packages cover MuPDF's bundled third-party deps in case
-          # the static -third archive is unavailable on the runner image.
-          sudo apt-get install -y --no-install-recommends \
-            libmupdf-dev mupdf-tools \
-            libfreetype6-dev libharfbuzz-dev libjbig2dec0-dev \
-            libopenjp2-7-dev libjpeg-dev zlib1g-dev
+          sudo apt-get install -y --no-install-recommends build-essential git
+          git clone --depth 1 --branch "${MUPDF_VERSION}" --recursive --shallow-submodules \
+            https://github.com/ArtifexSoftware/mupdf.git /tmp/mupdf
+          make -C /tmp/mupdf -j"$(nproc)" \
+            HAVE_X11=no HAVE_GLUT=no HAVE_CURL=no \
+            prefix="${MUPDF_PREFIX}" install
+          # Some MuPDF builds fold third-party objects into libmupdf.a and ship
+          # no libmupdf-third.a; create an empty archive so the binding's
+          # `-lmupdf-third` link flag resolves regardless of version.
+          if [ ! -f "${MUPDF_PREFIX}/lib/libmupdf-third.a" ]; then
+            ar crs "${MUPDF_PREFIX}/lib/libmupdf-third.a"
+          fi
+
+      - name: Expose MuPDF to the toolchain
+        run: |
+          # CPATH / LIBRARY_PATH are honored by the compiler driver regardless of
+          # flag order, so the in-source `-lmupdf -lmupdf-third` flags resolve.
+          # -lm is appended last because the static libmupdf archive needs libm.
+          echo "CPATH=${MUPDF_PREFIX}/include" >> "$GITHUB_ENV"
+          echo "LIBRARY_PATH=${MUPDF_PREFIX}/lib" >> "$GITHUB_ENV"
+          echo "CGO_LDFLAGS=-lm" >> "$GITHUB_ENV"
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -48,12 +75,11 @@ jobs:
       - name: Test with coverage
         run: go test -covermode=atomic -coverprofile=coverage.out ./...
 
-      - name: Coverage summary
+      - name: Coverage summary & gate
         run: |
           go tool cover -func=coverage.out | tail -1
           total=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}' | tr -d '%')
           echo "Total coverage: ${total}%"
-          # Fail the build if total statement coverage drops below the gate.
           awk -v t="$total" 'BEGIN { exit (t+0 >= 80 ? 0 : 1) }' \
             || { echo "Coverage ${total}% is below the 80% gate"; exit 1; }
 
