@@ -234,6 +234,17 @@ func (p *Page) Rows(opts ...RowOption) ([]Row, error) {
 	return clusterRows(p.words, cfg.tolerance), nil
 }
 
+// ClusterRows groups an arbitrary set of words into visual lines by vertical
+// position, identically to Rows. Use it when you need to cluster a filtered or
+// combined word set (e.g. after DropOutliers, or merging words from several
+// sources) rather than a whole page.
+func ClusterRows(ws Words, tolerance float64) []Row {
+	if tolerance <= 0 {
+		tolerance = defaultRowTolerance
+	}
+	return clusterRows(ws, tolerance)
+}
+
 // clusterRows performs the top-sweep line clustering shared by Rows and TextIn.
 func clusterRows(ws Words, tol float64) []Row {
 	if len(ws) == 0 {
