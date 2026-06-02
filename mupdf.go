@@ -1549,6 +1549,11 @@ func (p *Page) imageBytesRaw(index int) ([]byte, string, error) {
 	defer C.free(unsafe.Pointer(errBuf))
 	extBuf := (*C.char)(C.malloc(8))
 	defer C.free(unsafe.Pointer(extBuf))
+	// Zero the first byte so that if the C side returns NULL without writing an
+	// error message (the "no image at this index" case), GoString reads an empty
+	// string rather than uninitialized heap memory.
+	*errBuf = 0
+	*extBuf = 0
 	var outLen C.int
 	ptr := C.gomupdf_image_bytes(d.ctx, d.doc, C.int(p.Number), C.int(index), &outLen, extBuf, errBuf, errBufLen)
 	if ptr == nil {
