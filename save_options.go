@@ -189,6 +189,10 @@ func (d *Document) EzSave(path string) error {
 // SaveIncremental appends pending changes to path using an incremental update.
 // The document must have been opened from a file or stream. It is shorthand for
 // SaveWithOptions with Incremental set.
+//
+// Incremental save of an in-memory document requires a reasonably recent MuPDF;
+// some older builds cannot relate the output to the original input and return
+// "Cannot derive input stream from output stream".
 func (d *Document) SaveIncremental(path string) error {
 	return d.SaveWithOptions(path, SaveOptions{Incremental: true})
 }

@@ -161,6 +161,10 @@ var writableMetaKeys = map[string]string{
 // as Metadata returns ("title", "author", "subject", "keywords", "creator",
 // "producer", "creationDate", "modDate"); unknown keys are ignored. An empty
 // value clears that field. Changes take effect on the next Save.
+//
+// Writing metadata into a document opened from an existing file requires a
+// reasonably recent MuPDF; some older builds reject it ("not a dict (null)").
+// Documents created with NewPDF are unaffected.
 func (d *Document) SetMetadata(meta map[string]string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()

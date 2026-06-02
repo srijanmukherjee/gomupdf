@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -158,6 +159,12 @@ func TestSaveIncremental(t *testing.T) {
 	}
 	path := filepath.Join(t.TempDir(), "incr.pdf")
 	if err := d.SaveIncremental(path); err != nil {
+		// Incremental save of an in-memory document relies on MuPDF being able
+		// to relate the output to the original input; older builds cannot and
+		// report "Cannot derive input stream from output stream". Skip there.
+		if strings.Contains(err.Error(), "derive input stream") {
+			t.Skip("incremental save of in-memory documents requires a newer MuPDF:", err)
+		}
 		t.Fatal(err)
 	}
 	out, err := os.ReadFile(path)
