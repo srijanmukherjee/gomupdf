@@ -328,7 +328,9 @@ _ = doc.SaveIncremental("out.pdf")
 | Find tables | `page.FindTables` → `table.ToMarkdown` / `table.Header` |
 | Search | `page.Search` · `page.SearchRects` · `page.SearchWith` (clip, cap) |
 | Outline / links | `doc.TOC` · `page.Links` |
-| Render | `page.Pixmap` → `pm.PNG` / `pm.SavePNG` / `pm.Image` |
+| Render | `page.Pixmap(PixmapOptions{DPI,CMYK,Clip…})` → `pm.PNG`/`JPEG`/`Save`/`Image` |
+| Pixmap ops | `pm.Invert` · `pm.Gamma` · `pm.Bytes` |
+| Fonts | `page.GetFonts` · `doc.ExtractFont` · `NewFont(…).TextLength` |
 | Images / drawings | `page.GetImages` · `page.ExtractImage` · `page.GetDrawings` |
 | Rotation / boxes | `page.Rotation`/`SetRotation` · `page.MediaBox`/`CropBox`/`Set…` |
 | Metadata / XMP | `doc.Metadata`/`SetMetadata` · `doc.XMP`/`SetXMP`/`DeleteXMP` |
@@ -359,9 +361,11 @@ Legend: ✅ supported · 🟡 partial · ⬜ not yet
 | Structure | Page labels, page boxes, rotation | ✅ |
 | Structure | Metadata read/write + XMP | ✅ |
 | Structure | Embedded files, optional-content layers | ⬜ |
-| Render | Pixmap → raster (PNG, `image.Image`, pixel access) | ✅ |
+| Render | Pixmap → raster (DPI, RGB/Gray/CMYK, clip, annot toggle) | ✅ |
+| Render | Pixmap ops (invert, gamma) + PNG/JPEG/PNM encode & save | ✅ |
 | Render | Extract images + placement bbox | ✅ |
 | Render | Vector drawings / paths | ✅ |
+| Read | Fonts — enumerate, extract embedded program, glyph metrics | ✅ |
 | Render | OCR, image masks | ⬜ |
 | Write | New PDF / page / delete / merge | ✅ |
 | Write | Insert text & images | ✅ |
