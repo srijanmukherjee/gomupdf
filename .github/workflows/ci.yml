@@ -6,13 +6,6 @@ on:
   pull_request:
     branches: [main]
 
-env:
-  # Pinned MuPDF release, built from source for reproducible static cgo linking.
-  # Matches the version the library is developed and tested against (1.27.x).
-  MUPDF_VERSION: "1.27.2"
-  # Installed under $HOME so the cache needs no elevated permissions.
-  MUPDF_PREFIX: /home/runner/mupdf
-
 jobs:
   test:
     name: build · vet · test · coverage
@@ -21,38 +14,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Cache MuPDF build
-        id: mupdf-cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.MUPDF_PREFIX }}
-          key: mupdf-${{ runner.os }}-${{ env.MUPDF_VERSION }}
-
-      - name: Build & install MuPDF (cache miss)
-        if: steps.mupdf-cache.outputs.cache-hit != 'true'
+      - name: Install MuPDF (system package)
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential git
-          git clone --depth 1 --branch "${MUPDF_VERSION}" --recursive --shallow-submodules \
-            https://github.com/ArtifexSoftware/mupdf.git /tmp/mupdf
-          make -C /tmp/mupdf -j"$(nproc)" \
-            HAVE_X11=no HAVE_GLUT=no HAVE_CURL=no \
-            prefix="${MUPDF_PREFIX}" install
-          # Some MuPDF builds fold third-party objects into libmupdf.a and ship
-          # no libmupdf-third.a; create an empty archive so the binding's
-          # `-lmupdf-third` link flag resolves regardless of version.
-          if [ ! -f "${MUPDF_PREFIX}/lib/libmupdf-third.a" ]; then
-            ar crs "${MUPDF_PREFIX}/lib/libmupdf-third.a"
-          fi
+          # libmupdf-dev provides the headers and the static libmupdf.a. Debian
+          # unbundles MuPDF's third-party deps, so they are installed separately
+          # and linked explicitly below (there is no libmupdf-third on Debian).
+          sudo apt-get install -y --no-install-recommends \
+            libmupdf-dev \
+            libfreetype-dev libharfbuzz-dev libjbig2dec0-dev \
+            libopenjp2-7-dev libjpeg-dev libgumbo-dev libmujs-dev zlib1g-dev
+          echo "--- installed MuPDF artifacts ---"
+          dpkg -L libmupdf-dev | grep -E '\.(a|so|pc|h)$' | head -n 20 || true
 
-      - name: Expose MuPDF to the toolchain
+      - name: Configure cgo link flags
         run: |
-          # CPATH / LIBRARY_PATH are honored by the compiler driver regardless of
-          # flag order, so the in-source `-lmupdf -lmupdf-third` flags resolve.
-          # -lm is appended last because the static libmupdf archive needs libm.
-          echo "CPATH=${MUPDF_PREFIX}/include" >> "$GITHUB_ENV"
-          echo "LIBRARY_PATH=${MUPDF_PREFIX}/lib" >> "$GITHUB_ENV"
-          echo "CGO_LDFLAGS=-lm" >> "$GITHUB_ENV"
+          # The binding's in-source linux flags are `-lmupdf -lmupdf-third`, but
+          # Debian ships no libmupdf-third. Provide an empty stub so that flag
+          # resolves, then link MuPDF's third-party deps from the system.
+          mkdir -p "$HOME/stublib"
+          ar crs "$HOME/stublib/libmupdf-third.a"
+          echo "LIBRARY_PATH=$HOME/stublib" >> "$GITHUB_ENV"
+          echo "CGO_LDFLAGS=-lfreetype -lharfbuzz -ljbig2dec -lopenjp2 -ljpeg -lgumbo -lmujs -lz -lm" >> "$GITHUB_ENV"
 
       - name: Set up Go
         uses: actions/setup-go@v5
