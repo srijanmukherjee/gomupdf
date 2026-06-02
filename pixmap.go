@@ -1,18 +1,23 @@
 package gomupdf
 
 import (
-	"encoding/binary"
 	"errors"
 	"image"
 	"image/png"
 	"os"
+
+	"github.com/srijanmukherjee/gomupdf/geometry"
 )
 
 // PixmapOptions controls rendering.
 type PixmapOptions struct {
-	Zoom  float64 // scale factor (1.0 = 72 DPI); <=0 means 1.0
-	Gray  bool    // render in grayscale instead of RGB
-	Alpha bool    // include an alpha channel
+	Zoom     float64        // scale factor (1.0 = 72 DPI); <=0 means 1.0
+	Gray     bool           // render in grayscale instead of RGB
+	Alpha    bool           // include an alpha channel
+	DPI      float64        // if > 0, overrides Zoom (Zoom = DPI/72)
+	CMYK     bool           // render in CMYK (4 components); takes precedence over Gray
+	Clip     *geometry.Rect // if non-nil, render only this region (PDF points)
+	NoAnnots bool           // if true, render page contents only (skip annotations)
 }
 
 // Pixmap is a rendered raster of a page. Samples is row-major,
@@ -24,34 +29,6 @@ type Pixmap struct {
 	Stride  int
 	Alpha   bool
 	Samples []byte
-}
-
-// Pixmap renders the page.
-func (p *Page) Pixmap(opts ...PixmapOptions) (*Pixmap, error) {
-	o := PixmapOptions{Zoom: 1}
-	if len(opts) > 0 {
-		o = opts[0]
-	}
-	if o.Zoom <= 0 {
-		o.Zoom = 1
-	}
-	blob, err := p.pixmapRaw(o.Zoom, o.Gray, o.Alpha)
-	if err != nil {
-		return nil, err
-	}
-	if len(blob) < 20 {
-		return nil, errors.New("gomupdf: short pixmap blob")
-	}
-	rd := func(i int) int { return int(int32(binary.LittleEndian.Uint32(blob[i*4 : i*4+4]))) }
-	pm := &Pixmap{
-		Width:   rd(0),
-		Height:  rd(1),
-		N:       rd(2),
-		Stride:  rd(3),
-		Alpha:   rd(4) != 0,
-		Samples: blob[20:],
-	}
-	return pm, nil
 }
 
 // Pixel returns the N component bytes at (x, y).
