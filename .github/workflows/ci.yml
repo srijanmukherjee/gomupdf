@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: build · vet · test · coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install MuPDF (libmupdf + headers)
+        run: |
+          sudo apt-get update
+          # libmupdf-dev provides the headers and static libs (libmupdf,
+          # libmupdf-third) that the cgo flags in mupdf.go link against. The
+          # extra -dev packages cover MuPDF's bundled third-party deps in case
+          # the static -third archive is unavailable on the runner image.
+          sudo apt-get install -y --no-install-recommends \
+            libmupdf-dev mupdf-tools \
+            libfreetype6-dev libharfbuzz-dev libjbig2dec0-dev \
+            libopenjp2-7-dev libjpeg-dev zlib1g-dev
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-clean:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test with coverage
+        run: go test -covermode=atomic -coverprofile=coverage.out ./...
+
+      - name: Coverage summary
+        run: |
+          go tool cover -func=coverage.out | tail -1
+          total=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}' | tr -d '%')
+          echo "Total coverage: ${total}%"
+          # Fail the build if total statement coverage drops below the gate.
+          awk -v t="$total" 'BEGIN { exit (t+0 >= 80 ? 0 : 1) }' \
+            || { echo "Coverage ${total}% is below the 80% gate"; exit 1; }
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage.out
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
