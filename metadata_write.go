@@ -14,7 +14,21 @@ package gomupdf
 
 static int gomupdf_set_meta(fz_context *ctx, fz_document *doc, const char *key,
                             const char *value, char *err, int errlen) {
-    fz_try(ctx) { fz_set_metadata(ctx, doc, key, value); }
+    fz_try(ctx) {
+        // fz_set_metadata("info:...") writes into the trailer /Info dict, which
+        // does not exist on a freshly created PDF. Create it first so the set
+        // does not fail with "not a dict (null)".
+        pdf_document *pdf = pdf_specifics(ctx, doc);
+        if (pdf && strncmp(key, "info:", 5) == 0) {
+            pdf_obj *trailer = pdf_trailer(ctx, pdf);
+            pdf_obj *info = pdf_dict_get(ctx, trailer, PDF_NAME(Info));
+            if (!pdf_is_dict(ctx, info)) {
+                pdf_obj *ref = pdf_add_object_drop(ctx, pdf, pdf_new_dict(ctx, pdf, 8));
+                pdf_dict_put_drop(ctx, trailer, PDF_NAME(Info), ref);
+            }
+        }
+        fz_set_metadata(ctx, doc, key, value);
+    }
     fz_catch(ctx) {
         snprintf(err, errlen, "%s", fz_caught_message(ctx));
         return -1;
