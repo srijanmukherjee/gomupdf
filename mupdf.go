@@ -1119,6 +1119,7 @@ type Document struct {
 	ctx       *C.fz_context
 	doc       *C.fz_document
 	data      unsafe.Pointer // C-malloc'd copy backing the in-memory stream
+	dataLen   int            // length of the original bytes at data (for incremental save)
 	locked    bool           // encrypted and not yet authenticated
 	encrypted bool           // whether the PDF was password-protected at open
 }
@@ -1154,7 +1155,7 @@ func OpenStream(pdf []byte) (*Document, error) {
 		return nil, errors.New("gomupdf: open failed: " + C.GoString(errBuf))
 	}
 
-	d := &Document{ctx: ctx, doc: doc, data: cdata}
+	d := &Document{ctx: ctx, doc: doc, data: cdata, dataLen: len(pdf)}
 	d.locked = C.gomupdf_needs_password(ctx, doc) != 0
 	d.encrypted = d.locked
 	runtime.SetFinalizer(d, (*Document).Close)
