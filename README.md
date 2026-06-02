@@ -327,7 +327,12 @@ _ = doc.SaveIncremental("out.pdf")
 | Export markup | `page.HTML` · `page.XHTML` · `page.XML` |
 | Find tables | `page.FindTables` → `table.ToMarkdown` / `table.Header` |
 | Search | `page.Search` · `page.SearchRects` · `page.SearchWith` (clip, cap) |
-| Outline / links | `doc.TOC` · `page.Links` |
+| Outline / links | `doc.TOC`/`SetTOC` · `page.Links`/`InsertLink`/`DeleteLink` |
+| Annotate | `page.AddHighlight`/`AddFreeText`/`AddLine`/`Annotations`/`DeleteAnnotation` |
+| Redact | `page.AddRedaction` → `page.ApplyRedactions` |
+| Forms | `page.Widgets` · `page.SetTextField` · `page.AddTextField` |
+| Page ops | `doc.CopyPage`/`MovePage`/`SelectPages`/`InsertPDFRange` |
+| Draw | `page.DrawRect`/`DrawLine`/`DrawCircle` · `page.InsertTextbox` |
 | Render | `page.Pixmap(PixmapOptions{DPI,CMYK,Clip…})` → `pm.PNG`/`JPEG`/`Save`/`Image` |
 | Pixmap ops | `pm.Invert` · `pm.Gamma` · `pm.Bytes` |
 | Fonts | `page.GetFonts` · `doc.ExtractFont` · `NewFont(…).TextLength` |
@@ -356,8 +361,8 @@ Legend: ✅ supported · 🟡 partial · ⬜ not yet
 | Read | Geometry primitives (`geometry` pkg) | ✅ |
 | Read | Text search (quads & rects; region clip + hit cap) | ✅ |
 | Read | Tables — word-alignment & vector-ruling, → Markdown | ✅ |
-| Structure | Outline (TOC) | ✅ |
-| Structure | Page links | ✅ |
+| Structure | Outline (TOC) read & write | ✅ |
+| Structure | Page links — read, insert, goto, delete | ✅ |
 | Structure | Page labels, page boxes, rotation | ✅ |
 | Structure | Metadata read/write + XMP | ✅ |
 | Structure | Embedded files, optional-content layers | ⬜ |
@@ -367,15 +372,18 @@ Legend: ✅ supported · 🟡 partial · ⬜ not yet
 | Render | Vector drawings / paths | ✅ |
 | Read | Fonts — enumerate, extract embedded program, glyph metrics | ✅ |
 | Render | OCR, image masks | ⬜ |
-| Write | New PDF / page / delete / merge | ✅ |
-| Write | Insert text & images | ✅ |
+| Write | New PDF, page insert/delete/copy/move/select, merge & range-merge | ✅ |
+| Write | Insert text, images, word-wrapped text boxes | ✅ |
+| Write | Draw lines / rects / circles | ✅ |
+| Write | Annotations — markup, shapes, ink, free-text, sticky notes | ✅ |
+| Write | Redaction (mark + apply) | ✅ |
+| Write | Form widgets — read, fill, create text fields | 🟡 text/checkbox |
 | Write | Save options (deflate, clean, linear, ASCII, incremental) | ✅ |
 | Write | AES-256 encryption | ✅ |
-| Write | Annotations | 🟡 rectangle only |
-| Write | Widgets/forms, redaction, fonts, Shape API | ⬜ |
+| Write | Digital signatures, full Shape API, OCG layers | ⬜ |
 
 > gomupdf is actively working toward feature parity with PyMuPDF. The remaining
-> ⬜ items (annotations, forms, redaction, fonts, OCR, layers) are on the
+> remaining ⬜ items (digital signatures, full form types, OCR, optional-content layers) are on the
 > roadmap.
 
 ## Concurrency & memory
