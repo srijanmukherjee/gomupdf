@@ -322,10 +322,11 @@ _ = doc.SaveIncremental("out.pdf")
 | Open EPUB/XPS/image/… | `OpenAny` · `OpenAnyStream` |
 | Convert to writable PDF | `doc.ConvertToPDF()` |
 | Count / load / iterate pages | `doc.PageCount` · `doc.LoadPage` · `doc.Pages` |
-| Extract text | `doc.Text` · `page.GetText` · `page.Lines` |
-| Get positioned text | `page.Words` · `page.Spans` · `page.StructuredText` |
-| Find tables | `page.FindTables` |
-| Search | `page.Search` · `page.SearchRects` |
+| Extract text | `doc.Text` · `page.GetText` · `page.Lines` · `page.ExtractText` (clip+flags) |
+| Get positioned text | `page.Words` · `page.Spans` · `page.StructuredText` · `page.RawDict`/`Dict` |
+| Export markup | `page.HTML` · `page.XHTML` · `page.XML` |
+| Find tables | `page.FindTables` → `table.ToMarkdown` / `table.Header` |
+| Search | `page.Search` · `page.SearchRects` · `page.SearchWith` (clip, cap) |
 | Outline / links | `doc.TOC` · `page.Links` |
 | Render | `page.Pixmap` → `pm.PNG` / `pm.SavePNG` / `pm.Image` |
 | Images / drawings | `page.GetImages` · `page.ExtractImage` · `page.GetDrawings` |
@@ -348,9 +349,11 @@ Legend: ✅ supported · 🟡 partial · ⬜ not yet
 | Read | Open XPS / EPUB / CBZ / SVG / images, convert to PDF | ✅ |
 | Read | Page count, load, iterate | ✅ |
 | Read | Plain & structured text, char-level word boxes | ✅ |
+| Read | dict/rawdict (per-char), HTML / XHTML / XML export | ✅ |
+| Read | Text extraction options (clip rect, stext flags) | ✅ |
 | Read | Geometry primitives (`geometry` pkg) | ✅ |
-| Read | Text search (quads & rects) | ✅ |
-| Read | Tables — word-alignment & vector-ruling | ✅ |
+| Read | Text search (quads & rects; region clip + hit cap) | ✅ |
+| Read | Tables — word-alignment & vector-ruling, → Markdown | ✅ |
 | Structure | Outline (TOC) | ✅ |
 | Structure | Page links | ✅ |
 | Structure | Page labels, page boxes, rotation | ✅ |
