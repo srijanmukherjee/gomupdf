@@ -8,7 +8,8 @@ on:
 
 env:
   # Pinned MuPDF release, built from source for reproducible static cgo linking.
-  MUPDF_VERSION: "1.24.10"
+  # Matches the version the library is developed and tested against (1.27.x).
+  MUPDF_VERSION: "1.27.2"
   # Installed under $HOME so the cache needs no elevated permissions.
   MUPDF_PREFIX: /home/runner/mupdf
 
@@ -57,7 +58,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false # no module dependencies, so nothing to cache
 
       - name: Verify formatting
         run: |
