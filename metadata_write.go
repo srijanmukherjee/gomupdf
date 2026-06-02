@@ -12,24 +12,38 @@ package gomupdf
 #include <string.h>
 #include <stdio.h>
 
-static int gomupdf_set_meta(fz_context *ctx, fz_document *doc, const char *key,
-                            const char *value, char *err, int errlen) {
+// Write standard info-dictionary fields from a spec of "Field\tValue" lines
+// (an empty value deletes the field) in a SINGLE pass. The trailer /Info dict
+// is fetched or created once and all fields are written into that same object.
+// Doing every field in one cgo call is deliberate: on documents opened from a
+// stream, a /Info put made in one call is not always visible to a pdf_dict_get
+// in a later call (and older MuPDF builds mishandle /Info via fz_set_metadata
+// entirely), so per-field calls would lose all but the last field.
+static int gomupdf_set_metadata(fz_context *ctx, fz_document *doc, char *spec,
+                                char *err, int errlen) {
+    pdf_document *pdf = pdf_specifics(ctx, doc);
+    if (!pdf) { snprintf(err, errlen, "not a PDF document"); return -1; }
     fz_try(ctx) {
-        // fz_set_metadata("info:...") writes into the trailer /Info dictionary
-        // and handles dirty-tracking (so the change is captured by incremental
-        // saves). Older MuPDF builds, however, do not auto-create /Info and
-        // throw "not a dict (null)" — so ensure it exists, as a proper indirect
-        // object, before delegating.
-        pdf_document *pdf = pdf_specifics(ctx, doc);
-        if (pdf && strncmp(key, "info:", 5) == 0) {
-            pdf_obj *trailer = pdf_trailer(ctx, pdf);
-            pdf_obj *info = pdf_dict_get(ctx, trailer, PDF_NAME(Info));
-            if (!pdf_is_dict(ctx, pdf_resolve_indirect(ctx, info))) {
-                pdf_obj *ref = pdf_add_object_drop(ctx, pdf, pdf_new_dict(ctx, pdf, 8));
-                pdf_dict_put_drop(ctx, trailer, PDF_NAME(Info), ref);
-            }
+        // Ensure /Info exists as a dict so older MuPDF builds don't reject the
+        // write, then delegate each field to fz_set_metadata, which knows how
+        // to mutate the trailer for both freshly created and stream-opened
+        // documents (and tracks the change for incremental saves).
+        pdf_obj *trailer = pdf_trailer(ctx, pdf);
+        if (!pdf_is_dict(ctx, pdf_resolve_indirect(ctx, pdf_dict_get(ctx, trailer, PDF_NAME(Info))))) {
+            pdf_obj *ref = pdf_add_object_drop(ctx, pdf, pdf_new_dict(ctx, pdf, 8));
+            pdf_dict_put(ctx, trailer, PDF_NAME(Info), ref);
+            pdf_drop_obj(ctx, ref);
         }
-        fz_set_metadata(ctx, doc, key, value);
+        for (char *line = strtok(spec, "\n"); line; line = strtok(NULL, "\n")) {
+            char *tab = strchr(line, '\t');
+            if (!tab) continue;
+            *tab = 0;
+            char *field = line;
+            char *value = tab + 1; // remainder of the line, possibly empty
+            char key[128];
+            snprintf(key, sizeof(key), "info:%s", field);
+            fz_set_metadata(ctx, doc, key, value);
+        }
     }
     fz_catch(ctx) {
         snprintf(err, errlen, "%s", fz_caught_message(ctx));
@@ -120,6 +134,7 @@ import "C"
 
 import (
 	"errors"
+	"strings"
 	"unsafe"
 )
 
@@ -152,21 +167,29 @@ func (d *Document) SetMetadata(meta map[string]string) error {
 	if d.doc == nil {
 		return errors.New("gomupdf: document closed")
 	}
-	errBuf := (*C.char)(C.malloc(errBufLen))
-	defer C.free(unsafe.Pointer(errBuf))
+	// Build a "Field\tValue" spec for the recognized keys; tabs and newlines in
+	// values are flattened to spaces so the line format stays unambiguous.
+	clean := strings.NewReplacer("\t", " ", "\n", " ")
+	var b strings.Builder
 	for name, value := range meta {
 		key, ok := writableMetaKeys[name]
 		if !ok {
 			continue
 		}
-		ck := C.CString(key)
-		cv := C.CString(value)
-		rc := C.gomupdf_set_meta(d.ctx, d.doc, ck, cv, errBuf, errBufLen)
-		C.free(unsafe.Pointer(ck))
-		C.free(unsafe.Pointer(cv))
-		if rc != 0 {
-			return errors.New("gomupdf: set metadata " + name + ": " + C.GoString(errBuf))
-		}
+		b.WriteString(strings.TrimPrefix(key, "info:"))
+		b.WriteByte('\t')
+		b.WriteString(clean.Replace(value))
+		b.WriteByte('\n')
+	}
+	if b.Len() == 0 {
+		return nil
+	}
+	cspec := C.CString(b.String())
+	defer C.free(unsafe.Pointer(cspec))
+	errBuf := (*C.char)(C.malloc(errBufLen))
+	defer C.free(unsafe.Pointer(errBuf))
+	if C.gomupdf_set_metadata(d.ctx, d.doc, cspec, errBuf, errBufLen) != 0 {
+		return errors.New("gomupdf: set metadata: " + C.GoString(errBuf))
 	}
 	return nil
 }

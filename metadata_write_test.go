@@ -43,6 +43,30 @@ func TestSetMetadataRoundTrip(t *testing.T) {
 	}
 }
 
+// SetMetadata works on a document opened from an existing file (not just
+// freshly created ones), where the /Info dictionary may be absent.
+func TestSetMetadataOpenedDoc(t *testing.T) {
+	d := openFixture(t, "small-table.pdf")
+	if err := d.SetMetadata(map[string]string{"title": "Opened", "author": "Test"}); err != nil {
+		d.Close()
+		t.Fatal(err)
+	}
+	data, err := d.SaveBytes(true)
+	d.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d2, err := OpenStream(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d2.Close()
+	got, _ := d2.Metadata()
+	if got["title"] != "Opened" || got["author"] != "Test" {
+		t.Errorf("opened-doc metadata = %+v, want title=Opened author=Test", got)
+	}
+}
+
 // An empty value clears a previously-set field.
 func TestSetMetadataClear(t *testing.T) {
 	d, _ := NewPDF()

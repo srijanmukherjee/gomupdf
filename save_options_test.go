@@ -136,7 +136,9 @@ func TestEzSave(t *testing.T) {
 }
 
 // SaveIncremental on a stream-opened document appends an update: the output
-// starts with the original bytes and reopens with the modification visible.
+// starts with the original bytes, is larger, and reopens with the modification
+// (an appended page) visible. A page insertion is the canonical incremental
+// change — it adds new objects and dirties the existing page tree.
 func TestSaveIncremental(t *testing.T) {
 	base := buildDoc(t)
 	orig, err := base.SaveBytesWithOptions(SaveOptions{Garbage: 3, Deflate: true})
@@ -150,8 +152,8 @@ func TestSaveIncremental(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer d.Close()
-	// Mutate: set a title so the incremental section has something to write.
-	if err := d.SetMetadata(map[string]string{"title": "Incremental"}); err != nil {
+	wantPages := d.PageCount() + 1
+	if err := d.NewPage(100, 100); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(t.TempDir(), "incr.pdf")
@@ -170,9 +172,8 @@ func TestSaveIncremental(t *testing.T) {
 	}
 	rd, _ := OpenStream(out)
 	defer rd.Close()
-	meta, _ := rd.Metadata()
-	if meta["title"] != "Incremental" {
-		t.Errorf("incremental update lost title: %q", meta["title"])
+	if rd.PageCount() != wantPages {
+		t.Errorf("incremental update lost the new page: pages = %d, want %d", rd.PageCount(), wantPages)
 	}
 }
 
