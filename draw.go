@@ -1,121 +1,9 @@
 package gomupdf
 
-/*
-#cgo darwin CFLAGS: -I/opt/homebrew/include
-#cgo darwin LDFLAGS: -L/opt/homebrew/lib -lmupdf
-#cgo linux CFLAGS: -I/usr/include -I/usr/local/include
-#cgo linux LDFLAGS: -lmupdf -lmupdf-third
-
-#include <mupdf/fitz.h>
-#include <mupdf/pdf.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
-
-// Append a generic PDF content-stream fragment (wrapped in q…Q) to the page.
-// The caller builds the operator fragment in Go; this function wraps it and
-// appends it as a new content stream (same /Contents-array logic as
-// gomupdf_insert_image but without the image/XObject machinery).
-static int gomupdf_draw_content(fz_context *ctx, fz_document *doc, int pageno,
-                                const char *fragment, char *err, int errlen) {
-    pdf_document *pdf = pdf_specifics(ctx, doc);
-    if (!pdf) { snprintf(err, errlen, "not a PDF document"); return -1; }
-    pdf_page *page = NULL;
-    fz_buffer *cbuf = NULL;
-    pdf_obj *stream = NULL;
-    fz_var(page);
-    fz_var(cbuf);
-    fz_var(stream);
-    fz_try(ctx) {
-        page = pdf_load_page(ctx, pdf, pageno);
-        pdf_obj *pobj = page->obj;
-        cbuf = fz_new_buffer(ctx, 256);
-        fz_append_printf(ctx, cbuf, "\nq\n%s\nQ\n", fragment);
-        stream = pdf_add_stream(ctx, pdf, cbuf, NULL, 0);
-        pdf_obj *contents = pdf_dict_get(ctx, pobj, PDF_NAME(Contents));
-        if (pdf_is_array(ctx, contents)) {
-            pdf_array_push(ctx, contents, stream);
-        } else {
-            pdf_obj *arr = pdf_new_array(ctx, pdf, 2);
-            if (contents) pdf_array_push(ctx, arr, contents);
-            pdf_array_push(ctx, arr, stream);
-            pdf_dict_put_drop(ctx, pobj, PDF_NAME(Contents), arr);
-        }
-    }
-    fz_always(ctx) {
-        pdf_drop_obj(ctx, stream);
-        fz_drop_buffer(ctx, cbuf);
-        fz_drop_page(ctx, (fz_page *)page);
-    }
-    fz_catch(ctx) {
-        snprintf(err, errlen, "%s", fz_caught_message(ctx));
-        return -1;
-    }
-    return 0;
-}
-
-// Ensure /Resources/Font/F0 = Helvetica on the page, then append a BT...ET
-// text content stream.
-static int gomupdf_draw_text(fz_context *ctx, fz_document *doc, int pageno,
-                             const char *fragment, char *err, int errlen) {
-    pdf_document *pdf = pdf_specifics(ctx, doc);
-    if (!pdf) { snprintf(err, errlen, "not a PDF document"); return -1; }
-    pdf_page *page = NULL;
-    fz_buffer *cbuf = NULL;
-    pdf_obj *stream = NULL;
-    fz_var(page);
-    fz_var(cbuf);
-    fz_var(stream);
-    fz_try(ctx) {
-        page = pdf_load_page(ctx, pdf, pageno);
-        pdf_obj *pobj = page->obj;
-        // ensure /Resources /Font /F0 = Helvetica
-        pdf_obj *res = pdf_dict_get(ctx, pobj, PDF_NAME(Resources));
-        if (!res) {
-            res = pdf_dict_put_dict(ctx, pobj, PDF_NAME(Resources), 2);
-        }
-        pdf_obj *fonts = pdf_dict_get(ctx, res, PDF_NAME(Font));
-        if (!fonts) {
-            fonts = pdf_dict_put_dict(ctx, res, PDF_NAME(Font), 1);
-        }
-        pdf_obj *font = pdf_new_dict(ctx, pdf, 4);
-        pdf_dict_put(ctx, font, PDF_NAME(Type), PDF_NAME(Font));
-        pdf_dict_put(ctx, font, PDF_NAME(Subtype), PDF_NAME(Type1));
-        pdf_dict_put_drop(ctx, font, PDF_NAME(BaseFont), pdf_new_name(ctx, "Helvetica"));
-        pdf_dict_puts_drop(ctx, fonts, "F0", pdf_add_object_drop(ctx, pdf, font));
-
-        cbuf = fz_new_buffer(ctx, 512);
-        fz_append_string(ctx, cbuf, fragment);
-        stream = pdf_add_stream(ctx, pdf, cbuf, NULL, 0);
-        pdf_obj *contents = pdf_dict_get(ctx, pobj, PDF_NAME(Contents));
-        if (pdf_is_array(ctx, contents)) {
-            pdf_array_push(ctx, contents, stream);
-        } else {
-            pdf_obj *arr = pdf_new_array(ctx, pdf, 2);
-            if (contents) pdf_array_push(ctx, arr, contents);
-            pdf_array_push(ctx, arr, stream);
-            pdf_dict_put_drop(ctx, pobj, PDF_NAME(Contents), arr);
-        }
-    }
-    fz_always(ctx) {
-        pdf_drop_obj(ctx, stream);
-        fz_drop_buffer(ctx, cbuf);
-        fz_drop_page(ctx, (fz_page *)page);
-    }
-    fz_catch(ctx) {
-        snprintf(err, errlen, "%s", fz_caught_message(ctx));
-        return -1;
-    }
-    return 0;
-}
-*/
-import "C"
-
 import (
 	"errors"
 	"fmt"
 	"strings"
-	"unsafe"
 
 	"github.com/srijanmukherjee/gomupdf/geometry"
 )
@@ -166,40 +54,26 @@ func (o DrawOptions) colorSetup() string {
 	return b.String()
 }
 
-// appendContent calls the graphics C helper.
+// appendContent delegates to the backend's generic content-stream writer.
 func (p *Page) appendContent(fragment string) error {
 	d := p.doc
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.doc == nil {
+	if d.b == nil {
 		return errors.New("gomupdf: document closed")
 	}
-	cf := C.CString(fragment)
-	defer C.free(unsafe.Pointer(cf))
-	errBuf := (*C.char)(C.malloc(errBufLen))
-	defer C.free(unsafe.Pointer(errBuf))
-	if C.gomupdf_draw_content(d.ctx, d.doc, C.int(p.Number), cf, errBuf, errBufLen) != 0 {
-		return errors.New("gomupdf: draw content: " + C.GoString(errBuf))
-	}
-	return nil
+	return d.b.drawContent(p.Number, fragment)
 }
 
-// appendTextContent calls the text C helper (ensures /F0 Helvetica).
+// appendTextContent delegates to the backend's text writer (ensures /F0 Helvetica).
 func (p *Page) appendTextContent(fragment string) error {
 	d := p.doc
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.doc == nil {
+	if d.b == nil {
 		return errors.New("gomupdf: document closed")
 	}
-	cf := C.CString(fragment)
-	defer C.free(unsafe.Pointer(cf))
-	errBuf := (*C.char)(C.malloc(errBufLen))
-	defer C.free(unsafe.Pointer(errBuf))
-	if C.gomupdf_draw_text(d.ctx, d.doc, C.int(p.Number), cf, errBuf, errBufLen) != 0 {
-		return errors.New("gomupdf: draw text: " + C.GoString(errBuf))
-	}
-	return nil
+	return d.b.drawText(p.Number, fragment)
 }
 
 // DrawLine draws a line from a to b with the given options.
