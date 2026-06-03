@@ -56,6 +56,11 @@ jobs:
       - name: Build
         run: go build ./...
 
+      - name: Build without the MuPDF backend (build-tag seam)
+        # The public API is backend-neutral; -tags nomupdf must compile with all
+        # cgo excluded (constructors then return errNoBackend).
+        run: go build -tags nomupdf ./...
+
       - name: Test with coverage
         run: go test -covermode=atomic -coverprofile=coverage.out ./...
 

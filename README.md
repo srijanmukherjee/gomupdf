@@ -398,6 +398,23 @@ process documents in parallel, **open one `Document` per goroutine**.
 - C resources are released deterministically in helper functions, so a Go-side
   mistake cannot leak the underlying objects.
 
+## Backends
+
+gomupdf's public API is **backend-neutral**: every operation that touches a
+native engine is delegated through an internal interface. The **MuPDF (cgo)**
+backend is the default and is compiled in automatically — you don't need to do
+anything.
+
+Building with `-tags nomupdf` excludes all cgo (no C toolchain or MuPDF needed
+to compile); constructors then return a "no backend" error. This build tag is
+the seam for alternative backends — e.g. a future cgo-free WASM or pure-Go
+engine slots in under the opposite tag with no change to the public API.
+
+```sh
+go build ./...                 # default: MuPDF backend
+go build -tags nomupdf ./...   # compile with the engine excluded
+```
+
 ## Subpackages
 
 - **[`geometry`](./geometry)** — the 2D primitives (`Point`, `Rect`, `IRect`,
