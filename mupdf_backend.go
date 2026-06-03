@@ -23,6 +23,14 @@ package gomupdf
 #include <stdint.h>
 
 // Create a context with document handlers registered. Returns NULL on failure.
+//
+// Contexts are created with NULL locks: a single fz_context is never shared
+// across goroutines (the public Document serializes its base context under a
+// mutex). The concurrency helpers (see concurrent.go / cloneWorker) deliberately
+// give each worker a *fully independent* context AND document over the shared,
+// immutable input bytes, rather than sharing one context's caches under locks.
+// Independent NULL-locked contexts may run in parallel safely because they share
+// no mutable MuPDF state, and single-threaded callers pay no lock overhead.
 static fz_context *gomupdf_new_context(void) {
     fz_context *ctx = fz_new_context(NULL, NULL, FZ_STORE_DEFAULT);
     if (!ctx) return NULL;
@@ -182,7 +190,7 @@ func (mupdfDriver) open(data []byte, magic string) (docBackend, bool, error) {
 		return nil, false, errors.New("gomupdf: open failed: " + C.GoString(errBuf))
 	}
 	needsPass := C.gomupdf_needs_password(ctx, doc) != 0
-	return &mupdfDoc{ctx: ctx, doc: doc, data: cdata, dataLen: len(data)}, needsPass, nil
+	return &mupdfDoc{ctx: ctx, doc: doc, data: cdata, dataLen: len(data), magic: magic}, needsPass, nil
 }
 
 func (mupdfDriver) newPDF() (docBackend, error) {
@@ -215,11 +223,20 @@ func (mupdfDriver) newFont(name string) (fontBackend, error) {
 
 // mupdfDoc is one open MuPDF document. Methods are NOT internally synchronized;
 // the public Document serializes them under its mutex.
+//
+// A worker (clone == true, produced by cloneWorker) is a fully independent
+// context+document opened over the base document's immutable input buffer. It
+// shares no mutable MuPDF state with the base or with sibling workers, so many
+// workers may run read/render methods in parallel. It owns its ctx and doc but
+// borrows the base's data buffer; close() drops the worker's ctx+doc and leaves
+// the borrowed buffer alone.
 type mupdfDoc struct {
 	ctx     *C.fz_context
 	doc     *C.fz_document
 	data    unsafe.Pointer // C-malloc'd copy backing the in-memory stream
 	dataLen int            // length of the original bytes at data (incremental save)
+	magic   string         // format hint used to (re)open the stream
+	clone   bool           // worker: owns ctx+doc, borrows data
 }
 
 func (d *mupdfDoc) close() {
@@ -231,10 +248,47 @@ func (d *mupdfDoc) close() {
 		C.fz_drop_context(d.ctx)
 		d.ctx = nil
 	}
-	if d.data != nil {
+	// The base owns the input buffer; a worker only borrows it.
+	if !d.clone && d.data != nil {
 		C.free(d.data)
 		d.data = nil
 	}
+}
+
+// cloneWorker returns a read-only worker: an independent context and document
+// opened over this document's immutable input buffer. It satisfies
+// concurrentBackend, letting many workers run read/render methods in parallel
+// with no shared mutable MuPDF state. Only stream-opened documents qualify;
+// documents built in memory (NewPDF) or without backing bytes return an error so
+// the caller falls back to serial execution. The returned backend must be closed
+// and must not outlive the base.
+func (d *mupdfDoc) cloneWorker() (docBackend, error) {
+	if d.doc == nil {
+		return nil, errors.New("gomupdf: document closed")
+	}
+	if d.data == nil || d.dataLen == 0 {
+		return nil, errors.New("gomupdf: concurrency requires a stream-opened document")
+	}
+	ctx := C.gomupdf_new_context()
+	if ctx == nil {
+		return nil, errors.New("gomupdf: failed to create context")
+	}
+	magic := d.magic
+	if magic == "" {
+		magic = ".pdf"
+	}
+	cmagic := C.CString(magic)
+	defer C.free(unsafe.Pointer(cmagic))
+	errBuf := (*C.char)(C.malloc(errBufLen))
+	defer C.free(unsafe.Pointer(errBuf))
+	doc := C.gomupdf_open_magic(ctx, (*C.uchar)(d.data), C.size_t(d.dataLen), cmagic, errBuf, errBufLen)
+	if doc == nil {
+		C.fz_drop_context(ctx)
+		return nil, errors.New("gomupdf: worker open failed: " + C.GoString(errBuf))
+	}
+	// data is intentionally left nil: the worker borrows the base buffer and
+	// must not free it.
+	return &mupdfDoc{ctx: ctx, doc: doc, clone: true}, nil
 }
 
 func (d *mupdfDoc) authenticate(password string) bool {

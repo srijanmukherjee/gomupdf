@@ -31,6 +31,18 @@ var errNoBackend = errors.New("gomupdf: no backend compiled in (build without th
 // `!nomupdf`-tagged file). nil means no backend is available.
 var defaultDriver driver
 
+// concurrentBackend is an optional capability: a docBackend that can spawn
+// read-only worker clones for parallel render/extract. Each clone shares the
+// base document's caches but carries independent per-goroutine engine state, so
+// multiple clones may run read methods concurrently without serialization. A
+// backend that does not implement this (or a closed document) makes the
+// concurrency helpers in concurrent.go fall back to serial execution.
+type concurrentBackend interface {
+	// cloneWorker returns a read-only backend sharing this document's content.
+	// The clone must be closed by the caller and must not outlive the base.
+	cloneWorker() (docBackend, error)
+}
+
 // driver opens and creates documents and fonts for one engine.
 type driver interface {
 	name() string

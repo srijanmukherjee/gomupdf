@@ -8,8 +8,11 @@
 // the interfaces in backend.go. The default engine is MuPDF (cgo), compiled in
 // unless the binary is built with `-tags nomupdf`.
 //
-// Concurrency: a Document binds one backend and is guarded by a mutex; do not
-// share a Document across goroutines without it. Always Close a Document.
+// Concurrency: a Document binds one backend and is guarded by a mutex, so its
+// own methods are safe to call from multiple goroutines but serialize. For
+// parallel read/render across pages, use MapPages / RenderPages /
+// TextByPageConcurrent (see concurrent.go), which fan work across a worker pool
+// of independent per-goroutine documents. Always Close a Document.
 package gomupdf
 
 import (

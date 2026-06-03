@@ -1,6 +1,6 @@
-.PHONY: all fmt vet build test cover tidy clean
+.PHONY: all fmt vet build test race bench cover tidy clean
 
-all: fmt vet test
+all: fmt vet test race
 
 # Format all packages.
 fmt:
@@ -21,6 +21,14 @@ build:
 # Run the test suite.
 test:
 	go test ./...
+
+# Run the suite under the race detector (guards the v1.2 worker pool).
+race:
+	go test -race ./...
+
+# Run benchmarks (e.g. serial vs concurrent rendering).
+bench:
+	go test -bench . -benchmem -run '^$$' ./...
 
 # Run tests with a coverage profile.
 cover:

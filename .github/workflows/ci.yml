@@ -64,6 +64,12 @@ jobs:
       - name: Test with coverage
         run: go test -covermode=atomic -coverprofile=coverage.out ./...
 
+      - name: Race detector (concurrency safety)
+        # v1.2 fans render/extract across worker goroutines; -race guards the
+        # worker pool and the per-worker independent-context model against data
+        # races. cgo concurrency bugs are otherwise silent.
+        run: go test -race ./...
+
       - name: Coverage summary & gate
         run: |
           go tool cover -func=coverage.out | tail -1
