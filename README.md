@@ -12,6 +12,7 @@ rendering, and full document assembly, behind a small, Go-shaped API.
 [![codecov](https://codecov.io/gh/srijanmukherjee/gomupdf/graph/badge.svg)](https://codecov.io/gh/srijanmukherjee/gomupdf)
 [![Go Reference](https://pkg.go.dev/badge/github.com/srijanmukherjee/gomupdf.svg)](https://pkg.go.dev/github.com/srijanmukherjee/gomupdf)
 [![Go Report Card](https://goreportcard.com/badge/github.com/srijanmukherjee/gomupdf)](https://goreportcard.com/report/github.com/srijanmukherjee/gomupdf)
+[![Built with Claude Code](https://img.shields.io/badge/Built%20with-Claude%20Code-D97757?logo=anthropic&logoColor=white)](https://claude.com/claude-code)
 
 </div>
 
